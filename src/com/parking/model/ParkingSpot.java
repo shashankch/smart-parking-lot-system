@@ -1,52 +1,45 @@
-
 package com.parking.model;
 
 import com.parking.model.enums.SpotType;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class ParkingSpot {
 
     private final int id;
 
+    private final int floorNo;
+
     private final SpotType type;
 
-    private boolean occupied;
+    private final AtomicReference<String> parkedVehicleNumber;
 
-    private String parkedVehicleNumber;
-
-    public ParkingSpot(int id, SpotType type) {
+    public ParkingSpot(int id, int floorNo, SpotType type) {
 
         this.id = id;
 
+        this.floorNo = floorNo;
+
         this.type = type;
 
-        this.occupied = false;
+        this.parkedVehicleNumber = new AtomicReference<>(null);
 
     }
 
-    public synchronized boolean assignVehicle(String parkedVehicleNumber) {
+    public boolean assignVehicle(String vehicleNumber) {
 
-        if (occupied)
-            return false;
-
-        occupied = true;
-
-        this.parkedVehicleNumber = parkedVehicleNumber;
-
-        return true;
+        return parkedVehicleNumber.compareAndSet(null, vehicleNumber);
 
     }
 
-    public synchronized void removeVehicle() {
+    public void removeVehicle() {
 
-        occupied = false;
-
-        this.parkedVehicleNumber = null;
+        parkedVehicleNumber.set(null);
 
     }
 
-    public synchronized boolean isOccupied() {
+    public boolean isOccupied() {
 
-        return occupied;
+        return parkedVehicleNumber.get() != null;
 
     }
 
@@ -62,8 +55,16 @@ public class ParkingSpot {
 
     }
 
-    public synchronized String getParkedVehicleNumber() {
-        return parkedVehicleNumber;
+    public int getFloorNo() {
+
+        return floorNo;
+
+    }
+
+    public String getParkedVehicleNumber() {
+
+        return parkedVehicleNumber.get();
+
     }
 
 }

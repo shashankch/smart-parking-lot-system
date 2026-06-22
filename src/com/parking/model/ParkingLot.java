@@ -12,7 +12,6 @@ public class ParkingLot {
     private ParkingLot() {
     }
 
-
     public static ParkingLot getInstance() {
 
         return INSTANCE;
@@ -28,6 +27,12 @@ public class ParkingLot {
     public List<ParkingFloor> getFloors() {
 
         return floors;
+
+    }
+
+    public synchronized void reset() {
+
+        floors.clear();
 
     }
 

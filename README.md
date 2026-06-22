@@ -1,76 +1,79 @@
 # Smart Parking Lot System
 
-A production-grade, thread-safe parking lot management system implementing low-level design (LLD) principles with pure Core Java. The system efficiently manages parking spots across multiple floors, allocates vehicles based on type and availability, and calculates dynamic parking fees.
+A production-grade, thread-safe, and lock-free parking lot management system implementing low-level design (LLD) principles with Core Java. The system efficiently manages parking spots across multiple floors, allocates vehicles based on type and availability using concurrent queues, and calculates parking fees with arbitrary precision.
 
-## Architecture & Design Patterns
+---
 
-### Core Patterns
+## Core Features & Architecture
 
-- **Singleton Pattern**: Single ParkingLot instance across the system
-- **Strategy Pattern**: Pluggable allocation and fee calculation strategies
-- **Builder Approach**: Flexible service configuration with injectable dependencies
+- **Lock-Free Concurrency (CAS)**: Thread safety in `ParkingSpot` is implemented using CPU-level atomic Compare-And-Swap (CAS) operations via `AtomicReference`. This avoids standard monitor lock overhead (`synchronized` blocks) and eliminates thread blocking.
+- **O(1) Concurrent Queues**: Spot allocation is managed using type-specific concurrent queues (`ConcurrentLinkedQueue`) per floor. This eliminates $O(N)$ linear scans of all spots, preventing lock contention under high-volume parallel check-ins.
+- **BigDecimal Precision Calculations**: The system utilizes `BigDecimal` (`RoundingMode.HALF_UP` scale 2) for fee calculation to prevent floating-point binary rounding errors standard in primitive `double` or `float` types.
+- **Advanced Dynamic Pricing**: Features a Peak Hour Surge Strategy which applies a `1.5x` surge multiplier to the base fee when check-in times fall within peak rush hours (09:00 - 12:00 and 17:00 - 20:00).
+- **Defensive Programming**: Basic input validation and license plate validation are built directly into domain models to enforce business constraints at the class boundary.
+- **Interactive CLI & Concurrency Tester**: Includes a text-based terminal menu to interactively configure floors, select pricing models, perform check-ins/check-outs, view real-time floor availability, or execute parallel stress-tests.
 
-## Concurrency & Thread Safety
+---
 
-- Atomic spot reservation via synchronized `ParkingSpot` methods.
-- Concurrent ticket tracking using `ConcurrentHashMap`.
-- Unique ticket generation using `AtomicInteger`.
-- Designed to prevent double-booking during simultaneous check-ins.
+## Design Patterns
 
-## Features
+- **Singleton Pattern**: Centralized, thread-safe `ParkingLot` manager.
+- **Strategy Pattern**: Pluggable spot allocation (`SpotAllocationStrategy`) and fee calculation (`FeeStrategy`) algorithms.
+- **Decorator Pattern**: A structural pattern used to dynamically extend the base `HourlyFeeStrategy` with a `PeakHourSurgeFeeStrategy` wrapper without modifying the base strategy logic.
+- **Queue-Pool Management**: Structured available queues per spot type to handle rapid allocations in a non-blocking way.
 
-- Vehicle-type-aware spot allocation (CAR, MOTORCYCLE, BUS)
-- Multi-floor parking lot management with real-time availability
-- Dynamic fee calculation with extensible strategies
-- Thread-safe concurrent operations
-- Exception handling for invalid operations
-- Check-in/check-out with automatic fee computation
+---
 
 ## Project Structure
 
 ```
 src/com/parking/
-├── Main.java                          # Entry point & example usage
+├── Main.java                          # Entry point & Interactive CLI
 ├── exception/
 │   ├── InvalidTicketException.java
 │   └── ParkingSpotNotFoundException.java
 ├── model/
-│   ├── ParkingLot.java               # Singleton lot manager
-│   ├── ParkingFloor.java             # Floor with typed spots
-│   ├── ParkingSpot.java              # Individual spot
+│   ├── ParkingLot.java               # Singleton lot manager with reset capabilities
+│   ├── ParkingFloor.java             # Floor with ConcurrentLinkedQueue pools
+│   ├── ParkingSpot.java              # Individual spot with lock-free atomic references
 │   ├── Ticket.java                   # Check-in/out record
-│   ├── Vehicle.java                  # Vehicle entity
+│   ├── Vehicle.java                  # Vehicle entity with regex plate validation
 │   └── enums/
 │       ├── VehicleType.java
 │       └── SpotType.java
 └── service/
-    ├── ParkingService.java           # Core business logic
+    ├── ParkingService.java           # Core business logic orchestrating flows
     ├── interfaces/
     │   ├── SpotAllocationStrategy.java
     │   └── FeeStrategy.java
     └── strategies/
         ├── NearestSpotAllocatorByVehType.java
-        └── HourlyFeeStrategy.java
+        ├── HourlyFeeStrategy.java
+        └── PeakHourSurgeFeeStrategy.java # Decorator for dynamic pricing
 ```
+
+---
 
 ## Prerequisites
 
 - Java 8 or higher
-- No external dependencies (pure Core Java)
+- No external dependencies (pure Core Java SE)
+
+---
 
 ## Build & Run
 
 **Compile:**
-
 ```bash
-javac -d out src/com/parking/**/*.java
+javac -d out src/com/parking/**/*.java src/com/parking/*.java
 ```
 
 **Execute:**
-
 ```bash
 java -cp out com.parking.Main
 ```
+
+---
 
 ## Usage Example
 
@@ -78,26 +81,33 @@ java -cp out com.parking.Main
 // Initialize parking lot with multiple floors
 ParkingLot parkingLot = ParkingLot.getInstance();
 parkingLot.addFloor(new ParkingFloor(1, 10, 10, 5)); // 10 small, 10 medium, 5 large spots
-parkingLot.addFloor(new ParkingFloor(2, 10, 10, 5));
 
-// Configure service with allocation & fee strategies
+// Base strategy
+FeeStrategy hourlyStrategy = new HourlyFeeStrategy();
+
+// Wrap with Peak Hour Surge (Decorator pattern)
+FeeStrategy peakHourStrategy = new PeakHourSurgeFeeStrategy(hourlyStrategy);
+
+// Configure service with allocation & dynamic fee strategies
 ParkingService service = new ParkingService(
     parkingLot,
     new NearestSpotAllocatorByVehType(),
-    new HourlyFeeStrategy()
+    peakHourStrategy
 );
 
 // Check-in vehicle
-Ticket ticket = service.checkIn(new Vehicle("UP32AA1111", VehicleType.CAR));
+Ticket ticket = service.checkIn(new Vehicle("DL3CAF1234", VehicleType.CAR));
 
-// Later: Check-out and compute fee
+// Later: Check-out and compute fee (BigDecimal output with surge factor if applicable)
 service.checkOut(ticket.getTicketId());
 ```
 
-## Key Design Decisions
+---
 
-1. **Singleton Pattern for ParkingLot**: Ensures centralized parking lot state with thread-safe access
-2. **Strategy Pattern for Allocation**: Enables swapping allocation algorithms (distance-based, random, etc.) without modifying core logic
-3. **Strategy Pattern for Fees**: Supports multiple fee models (hourly, daily, flat-rate) extensible
-4. **Concurrent Collections**: AtomicInteger and ConcurrentHashMap provide lock-free operations for high-throughput scenarios
-5. **Vehicle Type Awareness**: Spot allocation respects vehicle size constraints (CAR, MOTORCYCLE, BUS..)
+## Thread Safety Verification
+
+To prove concurrency safety, run the program and select **Option 4** (`Run Concurrency Stress Test`). It will:
+1. Reset the lot and initialize 1 floor with exactly **3 small spots**.
+2. Spawn **5 concurrent threads** checking in 5 motorcycles simultaneously using a `CountDownLatch`.
+3. Verify that exactly **3 check-ins succeed** and **2 fail** with standard custom exceptions.
+4. Concurrently check out the 3 parked vehicles and verify all spots are returned to availability correctly.

@@ -8,8 +8,10 @@ import com.parking.model.enums.SpotType;
 import com.parking.service.interfaces.SpotAllocationStrategy;
 import java.util.List;
 import java.util.Optional;
+import java.util.Queue;
 
 public class NearestSpotAllocatorByVehType implements SpotAllocationStrategy {
+
     @Override
     public Optional<ParkingSpot> allocate(Vehicle vehicle, ParkingLot lot) {
 
@@ -19,10 +21,19 @@ public class NearestSpotAllocatorByVehType implements SpotAllocationStrategy {
 
             for (SpotType type : preferred) {
 
-                for (ParkingSpot spot : floor.getSpots()) {
+                Queue<ParkingSpot> queue = floor.getAvailableSpotsMap().get(type);
 
-                    if (spot.getType() == type && spot.assignVehicle(vehicle.getNumber())) {
-                        return Optional.of(spot);
+                if (queue != null) {
+
+                    ParkingSpot spot;
+
+                    while ((spot = queue.poll()) != null) {
+
+                        if (spot.assignVehicle(vehicle.getNumber())) {
+
+                            return Optional.of(spot);
+
+                        }
 
                     }
 

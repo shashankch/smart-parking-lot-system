@@ -9,6 +9,7 @@ import com.parking.model.Ticket;
 import com.parking.model.Vehicle;
 import com.parking.service.interfaces.FeeStrategy;
 import com.parking.service.interfaces.SpotAllocationStrategy;
+import java.math.BigDecimal;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -74,13 +75,20 @@ public class ParkingService {
 
         ticket.close();
 
-        ticket.getSpot().removeVehicle();
+        ParkingSpot spot = ticket.getSpot();
 
-        double fee = feeStrategy.calculate(ticket);
+        int floorNo = spot.getFloorNo();
 
-        System.out
-                .println("Vehicle " + ticket.getVehicleNumber() + " checked out. Ticket #" + ticketId + " Fee = ₹"
-                        + fee);
+        ParkingFloor floor = lot.getFloors().stream()
+                .filter(f -> f.getFloorNo() == floorNo)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Floor " + floorNo + " not found"));
+
+        floor.releaseSpot(spot);
+
+        BigDecimal fee = feeStrategy.calculate(ticket);
+
+        System.out.println("Vehicle " + ticket.getVehicleNumber() + " checked out. Ticket #" + ticketId + " Fee = ₹" + fee);
 
     }
 
